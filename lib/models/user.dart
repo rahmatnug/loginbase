@@ -6,10 +6,10 @@ class User {
   User({
     required String username,
     required String password,
+    DateTime? lastLogin,
   })  : _username = username,
         _password = password,
-        _lastLogin = DateTime.now() {
-    // Hanya validasi username tidak boleh kosong
+        _lastLogin = lastLogin ?? DateTime.now() {
     if (username.isEmpty) {
       throw ArgumentError('Username tidak boleh kosong');
     }
@@ -28,22 +28,17 @@ class User {
     _username = value;
   }
 
-  // Password setter tanpa validasi
+  // Password setter
   set password(String value) {
     _password = value;
   }
 
-  // Method untuk validasi password
-  bool validatePassword(String password) {
-    return _password == password;
-  }
-
-  // Method untuk update last login
+  // Update last login
   void updateLastLogin() {
     _lastLogin = DateTime.now();
   }
 
-  // Konversi ke Map untuk storage
+  // Convert to Map for storage
   Map<String, dynamic> toMap() {
     return {
       'username': _username,
@@ -52,11 +47,12 @@ class User {
     };
   }
 
-  // Konstruktor dari Map untuk storage
+  // Create from Map
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
-      username: map['username'],
-      password: map['password'],
-    ).._lastLogin = DateTime.parse(map['lastLogin']);
+      username: map['username'] as String,
+      password: map['password'] as String,
+      lastLogin: DateTime.parse(map['lastLogin'] as String),
+    );
   }
 }

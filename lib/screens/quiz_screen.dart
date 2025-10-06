@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../Animation/FadeAnimation.dart';
 import '../data/question_data.dart';
@@ -20,6 +21,15 @@ class _QuizScreenState extends State<QuizScreen> {
   bool showFeedback = false;
   bool isCorrect = false;
   final quizMode = PracticeMode();
+  DateTime? startTime;
+
+  @override
+  void initState() {
+    super.initState();
+    startTime = DateTime.now();
+    // Initialize scores when quiz starts
+    ScoreSession.loadScores();
+  }
 
   void _answerQuestion(int selectedIndex) {
     final isAnswerCorrect = sampleQuestions[currentIndex].correctIndex == selectedIndex;
@@ -44,22 +54,46 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _finishQuiz() async {
-    final score = quizMode.calculateScore(correctAnswers, sampleQuestions.length);
-    await ScoreSession.addScore(widget.username, score, quizMode.modeName);
+    try {
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime!);
+      final score = quizMode.calculateScore(correctAnswers, sampleQuestions.length);
 
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ResultScreen(
-          username: widget.username,
-          score: score,
-          total: sampleQuestions.length,
-          correct: correctAnswers,
-          mode: quizMode.modeName,
+      // Save score with all required information
+      await ScoreSession.addScore(
+        widget.username,
+        score,
+        quizMode.modeName,
+        correctAnswers: correctAnswers,
+        totalQuestions: sampleQuestions.length,
+        durationSeconds: duration.inSeconds,
+      );
+
+      if (!mounted) return;
+
+      // Navigate to result screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            username: widget.username,
+            score: score,
+            totalQuestions: sampleQuestions.length,
+            correctAnswers: correctAnswers,
+            duration: duration,
+            mode: quizMode.modeName,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving score: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -90,7 +124,7 @@ class _QuizScreenState extends State<QuizScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Mode Latihan'),
-          automaticallyImplyLeading: true,
+          centerTitle: true,
         ),
         body: Stack(
           children: [
@@ -137,6 +171,14 @@ class _QuizScreenState extends State<QuizScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: ElevatedButton(
                           onPressed: showFeedback ? null : () => _answerQuestion(index),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: showFeedback
+                                ? (index == question.correctIndex
+                                    ? Colors.green
+                                    : Colors.red)
+                                : null,
+                          ),
                           child: Text(question.options[index]),
                         ),
                       ),

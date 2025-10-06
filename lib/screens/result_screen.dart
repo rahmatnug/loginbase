@@ -1,26 +1,37 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../Animation/FadeAnimation.dart';
 import 'home_screen.dart';
 
 class ResultScreen extends StatelessWidget {
   final String username;
   final int score;
-  final int total;
-  final int correct;
+  final int totalQuestions;
+  final int correctAnswers;
+  final Duration duration;
   final String mode;
 
   const ResultScreen({
     super.key,
     required this.username,
     required this.score,
-    required this.total,
-    required this.correct,
+    required this.totalQuestions,
+    required this.correctAnswers,
+    required this.duration,
     required this.mode,
   });
 
+  String _formatDuration() {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final percentage = (correct / total * 100).round();
+    final percentage = (correctAnswers / totalQuestions * 100).round();
     final isExcellent = percentage >= 80;
     final isGood = percentage >= 60 && percentage < 80;
 
@@ -86,9 +97,18 @@ class ResultScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 FadeAnimation(
                   delay: 0.5,
-                  child: Text(
-                    'Benar $correct dari $total soal ($percentage%)',
-                    style: const TextStyle(fontSize: 18),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Benar $correctAnswers dari $totalQuestions soal ($percentage%)',
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Waktu: ${_formatDuration()}',
+                        style: const TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),

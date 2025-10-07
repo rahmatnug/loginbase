@@ -1,5 +1,12 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+
+// Untuk Android/iOS
 import 'package:webview_flutter/webview_flutter.dart';
+
+// Untuk Web (iframe modern)
+import 'dart:ui_web' as ui; // ✅ ganti dari dart:ui ke dart:ui_web
+import 'package:web/web.dart' as web;
 
 class HelpResourcesScreen extends StatefulWidget {
   final String username;
@@ -10,7 +17,7 @@ class HelpResourcesScreen extends StatefulWidget {
 }
 
 class _HelpResourcesScreenState extends State<HelpResourcesScreen> {
-  late final WebViewController _controller;
+  WebViewController? _controller;
   bool isLoading = true;
   String currentUrl = 'https://brainly.co.id/';
 
@@ -35,50 +42,82 @@ class _HelpResourcesScreenState extends State<HelpResourcesScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeWebView();
+
+    if (kIsWeb) {
+      _registerIFrame(currentUrl);
+    } else {
+      _controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onPageStarted: (String url) {
+              setState(() {
+                isLoading = true;
+                currentUrl = url;
+              });
+            },
+            onPageFinished: (String url) {
+              setState(() {
+                isLoading = false;
+              });
+            },
+          ),
+        )
+        ..loadRequest(Uri.parse(currentUrl));
+    }
   }
 
-  void _initializeWebView() {
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            setState(() {
-              isLoading = true;
-              currentUrl = url;
-            });
-          },
-          onPageFinished: (String url) {
-            setState(() {
-              isLoading = false;
-            });
-          },
-          onNavigationRequest: (request) {
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(currentUrl));
+  void _registerIFrame(String url) {
+    // ignore: undefined_prefixed_name
+    ui.platformViewRegistry.registerViewFactory(
+      'iframeElement',
+          (int viewId) {
+        final iframe = web.HTMLIFrameElement();
+        iframe.src = url;
+        iframe.style.border = 'none';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        return iframe;
+      },
+    );
   }
 
   void _loadResource(String url) {
     setState(() {
       currentUrl = url;
     });
-    _controller.loadRequest(Uri.parse(url));
+
+    if (kIsWeb) {
+      _registerIFrame(url);
+    } else {
+      _controller?.loadRequest(Uri.parse(url));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    Widget webviewContent;
+
+    if (kIsWeb) {
+      webviewContent = const HtmlElementView(viewType: 'iframeElement');
+    } else {
+      webviewContent = Stack(
+        children: [
+          if (_controller != null) WebViewWidget(controller: _controller!),
+          if (isLoading) const Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sumber Belajar'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _controller.reload(),
-          ),
+          if (!kIsWeb && _controller != null)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => _controller!.reload(),
+            ),
         ],
       ),
       body: Column(
@@ -109,9 +148,7 @@ class _HelpResourcesScreenState extends State<HelpResourcesScreen> {
                       children: [
                         Text(
                           resource['title']!,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -130,17 +167,7 @@ class _HelpResourcesScreenState extends State<HelpResourcesScreen> {
               },
             ),
           ),
-          Expanded(
-            child: Stack(
-              children: [
-                WebViewWidget(controller: _controller),
-                if (isLoading)
-                  const Center(
-                    child: CircularProgressIndicator(),
-                  ),
-              ],
-            ),
-          ),
+          Expanded(child: webviewContent),
         ],
       ),
     );

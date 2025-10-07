@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../theme_provider.dart';
+import 'profile_screen.dart';
+import 'about_screen.dart';
+import '../utils/score_session.dart';
 
 class SettingsScreen extends StatefulWidget {
   final String username;
@@ -12,180 +16,190 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _deviceInfo = '';
-  String _firstInstall = '';
-  String _lastLogin = '';
-  bool _darkMode = false;
-  final DeviceInfoPlugin _deviceInfoPlugin = DeviceInfoPlugin();
+  String _appVersion = '—';
 
   @override
   void initState() {
     super.initState();
-    _loadDeviceInfo();
-    _loadSettings();
+    _loadAppInfo();
   }
 
-  Future<void> _loadDeviceInfo() async {
+  Future<void> _loadAppInfo() async {
     try {
-      if (Theme.of(context).platform == TargetPlatform.android) {
-        final androidInfo = await _deviceInfoPlugin.androidInfo;
-        setState(() {
-          _deviceInfo = '''
-Device: ${androidInfo.brand} ${androidInfo.model}
-Android Version: ${androidInfo.version.release}
-SDK: ${androidInfo.version.sdkInt}
-Hardware: ${androidInfo.hardware}
-''';
-        });
-      } else if (Theme.of(context).platform == TargetPlatform.iOS) {
-        final iosInfo = await _deviceInfoPlugin.iosInfo;
-        setState(() {
-          _deviceInfo = '''
-Device: ${iosInfo.name} ${iosInfo.model}
-System Name: ${iosInfo.systemName}
-System Version: ${iosInfo.systemVersion}
-''';
-        });
-      } else {
-        final webInfo = await _deviceInfoPlugin.webBrowserInfo;
-        setState(() {
-          _deviceInfo = '''
-Browser: ${webInfo.browserName}
-Platform: ${webInfo.platform}
-''';
-        });
-      }
-    } catch (e) {
+      final info = await PackageInfo.fromPlatform();
       setState(() {
-        _deviceInfo = 'Error getting device info: $e';
+        _appVersion = '${info.version}+${info.buildNumber}';
       });
+    } catch (_) {
+      setState(() => _appVersion = 'Unknown');
     }
   }
 
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final firstInstallTime = prefs.getInt('first_install_time');
-    final lastLogin = prefs.getString('last_login');
-
-    setState(() {
-      _darkMode = prefs.getBool('dark_mode') ?? false;
-      _firstInstall = firstInstallTime != null
-          ? DateFormat('dd MMMM yyyy, HH:mm').format(
-              DateTime.fromMillisecondsSinceEpoch(firstInstallTime))
-          : 'Not available';
-      _lastLogin = lastLogin ?? 'Never logged in';
-    });
-  }
-
-  Future<void> _toggleDarkMode(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('dark_mode', value);
-    setState(() {
-      _darkMode = value;
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(value ? 'Dark mode enabled' : 'Dark mode disabled'),
-          duration: const Duration(seconds: 1),
+  Future<void> _resetScores() async {
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Skor'),
+        content: const Text(
+          'Semua riwayat skor akan dihapus, tetapi akun Anda tetap ada. Lanjutkan?',
         ),
-      );
-    }
-  }
-
-  Widget _buildInfoCard(String title, String content) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(content),
-          ],
-        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('BATAL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('RESET', style: TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
+
+    if (shouldReset ?? false) {
+      await ScoreSession.clearScores();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Semua skor berhasil direset')),
+        );
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Logout'),
+        content: const Text('Anda yakin ingin keluar dari akun ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('BATAL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('LOGOUT'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout ?? false) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('current_user'); // sesuaikan jika kunci berbeda
+      if (mounted) {
+        Navigator.of(context).pop(); // kembali ke layar sebelumnya
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Berhasil logout')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('App Settings'),
+        title: const Text('Pengaturan'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoCard('Device Information', _deviceInfo),
-            _buildInfoCard('First Install', _firstInstall),
-            _buildInfoCard('Last Login', _lastLogin),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Dark Mode',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Switch(
-                      value: _darkMode,
-                      onChanged: _toggleDarkMode,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Settings reset successfully'),
-                    ),
-                  );
-                  _loadSettings();
-                }
+        children: [
+          // Profil Pengguna
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(widget.username),
+              subtitle: const Text('Ketuk untuk ubah profil (nama, avatar, password)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfileScreen(username: widget.username),
+                  ),
+                );
+                setState(() {}); // refresh tampilan jika perlu
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Tema
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Dark Mode'),
+                  subtitle: const Text('Aktif/nonaktifkan mode gelap'),
+                  value: themeProvider.themeMode == ThemeMode.dark,
+                  onChanged: (value) => themeProvider.toggleTheme(value),
                 ),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.restore),
-                  SizedBox(width: 8),
-                  Text('Reset All Settings'),
-                ],
+                ListTile(
+                  title: const Text('Ikuti Sistem'),
+                  subtitle: const Text('Tema akan mengikuti pengaturan perangkat'),
+                  trailing: ElevatedButton(
+                    onPressed: () => themeProvider.setSystemMode(),
+                    child: const Text('Set'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Reset Skor
+          ElevatedButton.icon(
+            onPressed: _resetScores,
+            icon: const Icon(Icons.delete),
+            label: const Text('Reset Skor'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+
+          // Tentang Aplikasi
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('Tentang Aplikasi'),
+              subtitle: Text('Versi: $_appVersion\nDeveloper: Tim Kuis Edukatif\nKontak: support@kuisedukatif.com'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Logout
+          ElevatedButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout),
+            label: const Text('Logout'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
